@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 
+export interface MousePosition {
+    x: number;
+    y: number;
+    scrollY: number;
+}
+
 export const useMousePosition = () => {
     const [position, setPosition] = useState<MousePosition>({ x: 0, y: 0, scrollY: 0 });
 

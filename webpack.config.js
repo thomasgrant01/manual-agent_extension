@@ -1,14 +1,16 @@
 const path = require('path');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
     entry: {
-        popup: './src/index.tsx',
+        app: './src/index.tsx',
         background: './src/background.js',
+        content: './src/content.js'
     },
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: '[name].js',
+        publicPath: ''
     },
     module: {
         rules: [
@@ -36,10 +38,12 @@ module.exports = {
         extensions: ['.tsx', '.ts', '.js'],
     },
     plugins: [
-        new HtmlWebpackPlugin({
-            template: './public/index.html',
-            filename: 'index.html',
-            chunks: ['popup'],
+        new CopyPlugin({
+            patterns: [
+                { from: 'public', to: '.' },
+                { from: 'src/styles/overlay.css', to: 'styles' },
+                { from: 'src/styles/MousePosition.css', to: 'styles' }
+            ],
         }),
     ],
 };

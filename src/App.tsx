@@ -1,9 +1,10 @@
-import React from 'react';
-import { MouseTracker } from './components/MouseTracker';
+import React, { useState, useEffect } from 'react';
 import { TaskList } from './components/TaskList';
 import { TaskDetails } from './components/TaskDetails';
+import { MousePosition } from './components/MousePosition';
 import { useTasks } from './hooks/useTasks';
 import './styles/App.css';
+import { Task, TaskAction } from './types';
 
 const App: React.FC = () => {
     const { tasks, loading, error, selectedTask, setSelectedTask, updateTask } = useTasks();
@@ -14,13 +15,62 @@ const App: React.FC = () => {
         }
     };
 
+    const configureBrowserForTask = (task: Task) => {
+        // Send message to content script to configure browser window
+        window.postMessage({
+            type: 'CONFIGURE_BROWSER',
+            specifications: task.specifications,
+            windowSize: {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+                outerWidth: window.outerWidth,
+                outerHeight: window.outerHeight
+            }
+        }, '*');
+    };
+
+    const handleTaskSelect = (task: any) => {
+        setSelectedTask(task);
+        
+        // Configure browser according to task specifications
+        configureBrowserForTask(task);
+        
+        // Only navigate if the host is different from current host
+        if (task.url && task.url !== window.location.href) {
+            try {
+                const taskUrl = new URL(task.url);
+                const currentUrl = new URL(window.location.href);
+                
+                // Only navigate if hosts are different
+                if (taskUrl.host !== currentUrl.host) {
+                    window.location.href = task.url;
+                } else {
+                    console.log('Same host, skipping navigation. Task URL:', taskUrl.host, 'Current URL:', currentUrl.host);
+                }
+            } catch (error) {
+                console.error('Failed to parse URLs for navigation check:', error);
+                // Fallback to original behavior if URL parsing fails
+                window.location.href = task.url;
+            }
+        }
+    };
+
     return (
         <div className="app-container">
-            <MouseTracker />
-            {loading && <div className="loading">Loading...</div>}
-            {error && <div className="error">{error}</div>}
+            {error && (
+                <div className="error-banner">
+                    ⚠️ {error}
+                </div>
+            )}
+
             {!selectedTask ? (
-                <TaskList tasks={tasks} onSelectTask={setSelectedTask} />
+                <div className="task-list-container">
+                    <div className="header-section">
+                        <span className="task-count">{tasks.length} tasks</span>
+                        <span className="hotkey-hint">Alt+C to capture</span>
+                    </div>
+                    <TaskList tasks={tasks} onSelectTask={handleTaskSelect} />
+                </div>
             ) : (
                 <TaskDetails
                     task={selectedTask}
@@ -28,6 +78,8 @@ const App: React.FC = () => {
                     onSubmit={handleTaskSubmit}
                 />
             )}
+            
+            <MousePosition />
         </div>
     );
 };

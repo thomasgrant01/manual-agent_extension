@@ -29,8 +29,11 @@ export interface Task {
 }
 
 export interface TaskAction {
-    action: string;
-    data: any;
+    action: 'click' | 'type' | 'scroll' | 'hover' | 'wait' | 'navigate';
+    x: number;
+    y: number;
+    h?: number; // height parameter for scroll actions or element height
+    text?: string; // only for type actions
 }
 
 export interface UpdateTaskRequest {

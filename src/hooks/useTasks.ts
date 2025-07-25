@@ -1,7 +1,40 @@
 import { useEffect, useState } from 'react';
-import { Task } from '../types';
+import { Task, TaskAction } from '../types';
 
-const BACKEND_URL = 'http://deer-content-quagga.ngrok-free.app';
+// Message passing utility for communication with content script
+const sendMessageToExtension = (payload: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+        const messageId = Math.random().toString(36).substring(2);
+        
+        const messageHandler = (event: MessageEvent) => {
+            if (event.source !== window) return;
+            
+            if (event.data.type === 'FROM_CONTENT_SCRIPT' && event.data.id === messageId) {
+                window.removeEventListener('message', messageHandler);
+                
+                if (event.data.error) {
+                    reject(new Error(event.data.error));
+                } else {
+                    resolve(event.data.response);
+                }
+            }
+        };
+        
+        window.addEventListener('message', messageHandler);
+        
+        window.postMessage({
+            type: 'FROM_REACT_APP',
+            id: messageId,
+            payload: payload
+        }, '*');
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+            window.removeEventListener('message', messageHandler);
+            reject(new Error('Message timeout'));
+        }, 10000);
+    });
+};
 
 export const useTasks = () => {
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -12,11 +45,13 @@ export const useTasks = () => {
     const fetchTasks = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${BACKEND_URL}/tasks/pending?limit=100&skip=0`);
-            if (!response.ok) throw new Error('Failed to fetch tasks');
-            const data = await response.json();
-            setTasks(data.sort((a: Task, b: Task) => a.created_at - b.created_at));
-            setError(null);
+            const response = await sendMessageToExtension({ action: 'fetchTasks' });
+            if (response.success) {
+                setTasks(response.data);
+                setError(null);
+            } else {
+                setError(response.error);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
@@ -27,19 +62,17 @@ export const useTasks = () => {
     const updateTask = async (taskId: string, actions: TaskAction[]) => {
         try {
             setLoading(true);
-            const response = await fetch(`${BACKEND_URL}/tasks/${taskId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    status: 'processed',
-                    actions,
-                }),
+            const response = await sendMessageToExtension({ 
+                action: 'updateTask', 
+                taskId, 
+                actions 
             });
-            if (!response.ok) throw new Error('Failed to update task');
-            await fetchTasks();
-            setSelectedTask(null);
+            if (response.success) {
+                await fetchTasks();
+                setSelectedTask(null);
+            } else {
+                setError(response.error);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update task');
         } finally {
@@ -48,9 +81,28 @@ export const useTasks = () => {
     };
 
     useEffect(() => {
+        // Initial fetch
         fetchTasks();
-        const interval = setInterval(fetchTasks, 5000);
+        
+        // Set up interval for periodic fetching every 5 seconds
+        const interval = setInterval(() => {
+            fetchTasks();
+        }, 5000);
+        
+        // Cleanup interval on unmount
         return () => clearInterval(interval);
+    }, []);
+
+    // Also fetch when component becomes visible (if browser tab becomes active)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                fetchTasks();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, []);
 
     return {
